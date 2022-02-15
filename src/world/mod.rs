@@ -40,6 +40,10 @@ impl World {
         let i = self.materials.insert(Material::Lambertian(albedo));
         MaterialRef(i)
     }
+    pub fn add_emitting_material(&mut self, albedo: AlbedoRef) -> MaterialRef {
+        let i = self.materials.insert(Material::Emitting(albedo));
+        MaterialRef(i)
+    }
     pub fn add_object(&mut self, shape: ShapeRef, mat: MaterialRef, transform: Isometry3<Float>) -> ObjectRef {
         let i = self.objects.insert(Object { shape, material: mat, transform });
         ObjectRef(i)
@@ -51,9 +55,9 @@ impl World {
         a.sample(int)
 
     }
-    pub fn scatter_ray<R: Randomness>(&self, mat: MaterialRef, ray_in: UnitVector3<Float>, int: &Intersection, rng: &mut R) -> Option<ScatteredRay> {
+    pub fn scatter_ray(&self, mat: MaterialRef, ray_in: UnitVector3<Float>, int: &Intersection, scene: &Scene) -> Option<ScatteredRay> {
         let m = &self.materials[mat.0];
-        m.scatter(ray_in, int, self, rng)
+        m.scatter(ray_in, int, scene)
     }
     pub fn brdf(&self, mat: MaterialRef, ray_in: UnitVector3<Float>, int: &Intersection, ray_out: UnitVector3<Float>) -> Float {
         let m = &self.materials[mat.0];
@@ -62,6 +66,9 @@ impl World {
     pub fn emit(&self, mat: MaterialRef, ray_out: UnitVector3<Float>, int: &Intersection) -> Vector3<Float> {
         let m = &self.materials[mat.0];
         m.emit(ray_out, int, self)
+    }
+    pub fn emits(&self, mat: MaterialRef) -> bool {
+        self.materials[mat.0].emits()
     }
 
     pub fn build_scene<R: Randomness>(&self, rng: &mut R) -> Scene {

@@ -1,7 +1,8 @@
 use std::mem::swap;
-use nalgebra::Point3;
+use nalgebra::{Point3, Vector3};
 use crate::Float;
 use crate::ray::Ray;
+
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct AABB {
@@ -23,10 +24,10 @@ impl AABB {
         }
     }
     pub fn from_points(points: &[Point3<Float>]) -> Self {
-        let mut min = Point3::new(Float::MAX, Float::MAX, Float::MAX);
-        let mut max = Point3::new(Float::MIN, Float::MIN, Float::MIN);
+        let mut min = points[0];
+        let mut max = points[0];
 
-        for point in points {
+        for point in &points[1..] {
             for a in 0..3 {
                 min[a] = min[a].min(point[a]);
                 max[a] = max[a].max(point[a]);
@@ -47,15 +48,18 @@ impl AABB {
         }
         false
     }
-    pub fn is_misaligned(&self) -> bool {
-        for a in 0..3 {
-            if self.min[a] > self.max[a] {
-                return true;
-            }
-        }
-        false
+    pub fn diagonal(&self) -> Vector3<Float> {
+        self.max - self.min
     }
-
+    pub fn centroid(&self) -> Point3<Float> {
+        let diagonal = self.diagonal();
+        self.min + diagonal * 0.5
+    }
+    pub fn surface_area(&self) -> Float {
+        let diagonal = self.diagonal();
+        let half_area = diagonal[0] * diagonal[1] + diagonal[0] * diagonal[2] + diagonal[1] * diagonal[2];
+        half_area * 2.0
+    }
 
     pub fn contains(&self, p: &Point3<Float>) -> bool {
         for a in 0..3 {
@@ -68,11 +72,6 @@ impl AABB {
     }
 
     pub fn intersects_ray(&self, r: &Ray, mut t_min: Float, mut t_max: Float) -> bool {
-        if self.is_misaligned() {
-            panic!("Tried to test intersection against misaligned aabb");
-        }
-
-
         for a in 0..3 {
             if self.min[a] == self.max[a] {
                 continue;

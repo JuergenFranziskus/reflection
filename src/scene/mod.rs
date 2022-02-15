@@ -15,16 +15,19 @@ pub struct Scene<'a> {
     pub(crate) world: &'a World,
     pub(crate) primitives: Vec<PrimitiveData>,
     pub(crate) bvh: BVH,
+    pub(crate) materials: Vec<MaterialRef>,
 }
 impl<'a> Scene<'a> {
     pub fn new<R: Randomness>(world: &'a World, rng: &mut R) -> Scene<'a> {
         let mut primitives = Vec::new();
         let mut aabbs = Vec::new();
+        let mut materials = Vec::with_capacity(world.objects.len());
 
         for (object_id, (_, o)) in world.objects.iter().enumerate() {
             let shape = &world.shapes[o.shape.0];
             let t = &o.transform;
             let material = o.material;
+            materials.push(material);
 
             let t_primitives = shape.as_transformed_primitives(t);
 
@@ -35,8 +38,7 @@ impl<'a> Scene<'a> {
                 aabbs.push((PrimitiveRef(primitive_i), aabb));
                 primitives.push(PrimitiveData {
                     primitive: p,
-                    material,
-                    _object_id: object_id,
+                    object_id,
                 });
             }
         }
@@ -47,12 +49,13 @@ impl<'a> Scene<'a> {
             world,
             primitives,
             bvh,
+            materials,
         }
     }
 
     pub fn intersect(&self, ray: &Ray, t_min: Float, t_max: Float) -> Option<Intersection> {
         let find = |ray: &Ray, p: PrimitiveRef| {
-            let mat = self.primitives[p.0].material;
+            let mat = self.materials[self.primitives[p.0].object_id];
             self.primitives[p.0].primitive.intersect(ray, t_min, t_max).map(|i| i.to_intersection(mat))
         };
         let comp = |a: Intersection, b: Intersection| {
@@ -70,7 +73,6 @@ impl<'a> Scene<'a> {
 
 
 pub(crate) struct PrimitiveData {
-    primitive: Primitive,
-    material: MaterialRef,
-    _object_id: usize,
+    pub(crate) primitive: Primitive,
+    pub(crate) object_id: usize,
 }

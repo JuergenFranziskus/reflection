@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::path::PathBuf;
 use std::time::Instant;
 use image::ImageFormat;
 use nalgebra::{Isometry3, Point3, Unit, vector, Vector3};
@@ -20,9 +21,14 @@ const DEPTH: u32 = 4;
 const ASPECT: Float = WIDTH as Float / HEIGHT as Float;
 
 const RNG_SEED: u64 = 100;
-const GAMMA: Float = 1.0;
+const GAMMA: Float = 2.2;
 
 fn main() {
+    let out_dir = PathBuf::from("images");
+    if !out_dir.exists() {
+        std::fs::create_dir("images").unwrap();
+    }
+
     let rng = StdRng::seed_from_u64(RNG_SEED);
 
     let mut randomness = DefaultRandomness { rng };
@@ -33,7 +39,7 @@ fn main() {
     let scene = world.build_scene(&mut randomness);
     let build_took = build_start.elapsed();
 
-    let integrator = PathTracingIntegrator::new(DEPTH, vector!(1.0, 1.0, 1.0));
+    let integrator = PathTracingIntegrator::new(DEPTH, vector!(0.0, 0.0, 0.0), &scene);
 
     let start = Instant::now();
     let render = render(RenderDescriptor {
@@ -49,15 +55,40 @@ fn main() {
     });
     let took = start.elapsed();
 
+    let max_white = max_luminance(render.pixels());
+
     let pixels: Vec<_> = render.into_pixels()
+        .map(|c| tonemap(c, max_white))
         .map(color_to_rgb)
         .flatten()
         .collect();
     let image = image::RgbImage::from_raw(WIDTH, HEIGHT, pixels).unwrap();
-    image.save_with_format("image.png", ImageFormat::Png).unwrap();
+    let name = format!("images/image{}x{}@{}<{}.png", WIDTH, HEIGHT, SAMPLES, DEPTH);
+    image.save_with_format(name, ImageFormat::Png).unwrap();
 
     println!("Built scene in {} milliseconds", build_took.as_millis());
     println!("Finished render in {:.2} seconds", took.as_secs_f64());
+}
+
+
+fn luminance(c: Vector3<Float>) -> Float {
+    c.dot(&vector!(0.2126, 0.7152, 0.0722))
+}
+fn change_luminance(c: Vector3<Float>, l_out: Float) -> Vector3<Float> {
+    let l_in = luminance(c);
+    let factor = l_out / l_in;
+    c * factor
+}
+fn tonemap(c: Vector3<Float>, max_white_l: Float) -> Vector3<Float> {
+    let old_l = luminance(c);
+    let numerator = old_l * (1.0 + (old_l / (max_white_l * max_white_l)));
+    let new_l = numerator / (1.0 + old_l);
+    change_luminance(c, new_l)
+}
+fn max_luminance<'a>(pixels: impl Iterator<Item = &'a Vector3<Float>>) -> Float {
+    pixels.map(|p| luminance(*p))
+        .max_by(|a, b| a.partial_cmp(&b).unwrap())
+        .unwrap()
 }
 
 fn color_to_rgb(mut c: Vector3<Float>) -> [u8; 3] {
@@ -66,6 +97,7 @@ fn color_to_rgb(mut c: Vector3<Float>) -> [u8; 3] {
     let r = (c[0] * 255.0).clamp(0.0, 255.0) as u8;
     let g = (c[1] * 255.0).clamp(0.0, 255.0) as u8;
     let b = (c[2] * 255.0).clamp(0.0, 255.0) as u8;
+
 
     [r, g, b]
 }
@@ -110,7 +142,9 @@ fn build_world<R: Randomness>(rng: &mut R) -> (World, Camera) {
 
     let sphere = world.add_sphere(1.0);
 
-    let mat0 = random_lambertian(&mut world, rng);
+    let mat_0_albedo = world.add_solid_albedo(vector!(1.0, 1.0, 1.0) * 10.0);
+    let mat0 = world.add_emitting_material(mat_0_albedo);
+    //let mat0 = random_lambertian(&mut world, rng);
     let mat1 = random_lambertian(&mut world, rng);
     let mat2 = random_lambertian(&mut world, rng);
 

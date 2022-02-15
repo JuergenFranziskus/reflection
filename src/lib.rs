@@ -16,6 +16,7 @@ pub mod intersection;
 pub mod camera;
 pub mod integrator;
 pub mod texture;
+pub mod pdf;
 
 #[cfg(not(feature = "wide"))]
 pub type Float = f32;
@@ -46,6 +47,8 @@ pub fn render<I: Integrator + Sync, R: Randomness + SeedingRandomness + Send>(de
                 desc.t_max,
                 &mut rng
             );
+
+            eprintln!("Finished line {}", y);
         });
 
 
