@@ -104,6 +104,11 @@ pub struct PixelCoord2D {
     pub y: u32,
 }
 impl PixelCoord2D {
+    pub fn new(x: u32, y: u32) -> Self {
+        Self {
+            x, y
+        }
+    }
     pub fn to_pixel_index(&self, width: u32) -> usize {
         (self.y * width + self.x) as usize
     }
@@ -118,6 +123,13 @@ pub struct TextureCoord2D {
     pub y: Float,
 }
 impl TextureCoord2D {
+    pub fn new(x: Float, y: Float) -> Self {
+        Self {
+            x, y
+        }
+    }
+
+
     pub fn to_pixel_coord(&self, width: u32, height: u32) -> PixelCoord2D {
         let fwidth = width as Float;
         let fheight = height as Float;
@@ -128,7 +140,7 @@ impl TextureCoord2D {
         let x = x.floor() as u32;
         let mut y = y.floor() as u32;
 
-        y = width - 1 - y;
+        y = height - 1 - y;
 
 
         PixelCoord2D {

@@ -4,7 +4,7 @@ use crate::intersection::Intersection;
 use crate::pdf::PDF;
 use crate::ray::Ray;
 use crate::scene::primitive::{PrimitiveDirectionPDF, PrimitiveRef};
-use crate::world::material::ScatteredRay;
+use crate::world::material::{MaterialPDF, ScatteredRay};
 
 pub struct PathTracingIntegrator {
     max_depth: u32,
@@ -44,27 +44,25 @@ impl PathTracingIntegrator {
 
         total_value / dividend
     }
-    fn generate_new_ray<R: Randomness>(&self, scattered: &ScatteredRay, int: &Intersection, scene: &Scene, rng: &mut R) -> (Ray, Float) {
+    fn generate_new_ray<R: Randomness>(&self, pdf: &MaterialPDF, int: &Intersection, scene: &Scene, rng: &mut R) -> (Ray, Float) {
         if self.lights.len() != 0 {
             let choice = rng.usize_range_exclusive(0, 2);
 
             let ray = if choice == 0 {
                 self.bias_light(int, scene, rng)
-            }
-            else {
-                let dir = scattered.pdf.generate(rng, scene);
+            } else {
+                let dir = pdf.generate(rng, scene);
                 Ray::new(int.point, dir)
             };
 
             let light_pdf_value = self.light_pdf_value(ray.direction, int, scene);
-            let scattered_pdf_value = scattered.pdf.value(&ray.direction, scene);
+            let scattered_pdf_value = pdf.value(&ray.direction, scene);
 
             let total_pdf_value = 0.5 * scattered_pdf_value + 0.5 * light_pdf_value;
             (ray, total_pdf_value)
-        }
-        else {
-            let ray = Ray::new(int.point, scattered.pdf.generate(rng, scene));
-            let pdf = scattered.pdf.value(&ray.direction, scene);
+        } else {
+            let ray = Ray::new(int.point, pdf.generate(rng, scene));
+            let pdf = pdf.value(&ray.direction, scene);
             (ray, pdf)
         }
     }
@@ -79,19 +77,26 @@ impl Integrator for PathTracingIntegrator {
             let mat = int.material;
             let emitted = scene.world.emit(mat, -ray.direction, &int);
 
-            if let Some(scattered) = scene.world.scatter_ray(mat, ray.direction, &int, scene) {
-                let (ray_out, pdf) = self.generate_new_ray(&scattered, &int, scene, rng);
+            if let Some(scattered) = scene.world.scatter_ray(mat, -ray.direction, &int, scene) {
+                match scattered {
+                    ScatteredRay::Diffuse { pdf, albedo } => {
+                        let (ray_out, pdf) = self.generate_new_ray(&pdf, &int, scene, rng);
 
-                let brdf = scene.world.brdf(mat, ray_out.direction, &int, -ray.direction);
-                let cos_theta = int.normal.dot(&ray_out.direction).abs();
+                        let brdf = scene.world.brdf(mat, ray_out.direction, &int, -ray.direction);
+                        let cos_theta = int.normal.dot(&ray_out.direction).abs();
 
-                let mut recursed = self.cast_ray(&ray_out, t_min, t_max, scene, depth + 1, rng);
+                        let mut recursed = self.cast_ray(&ray_out, t_min, t_max, scene, depth + 1, rng);
+                        correct_abnormal_color(&mut recursed);
 
-                if color_abnormal(&recursed) {
-                    recursed = Vector3::new(0.0, 0.0, 0.0);
+                        emitted + (mul_vectors(&albedo, &recursed) * brdf * cos_theta) / pdf
+                    }
+                    ScatteredRay::Specular { ray, albedo } => {
+                        let mut recursed = self.cast_ray(&ray, t_min, t_max, scene, depth + 1, rng);
+                        correct_abnormal_color(&mut recursed);
+
+                        emitted + (mul_vectors(&albedo, &recursed))
+                    }
                 }
-
-                emitted + (mul_vectors(&scattered.albedo, &recursed) * brdf * cos_theta) / pdf
             }
             else {
                 emitted
@@ -103,10 +108,17 @@ impl Integrator for PathTracingIntegrator {
     }
 }
 
+fn correct_abnormal_color(c: &mut Vector3<Float>)  {
+    for x in 0..3 {
+        if color_abnormal(c[x]) {
+            c[x] = 0.0;
+        }
+    }
 
-fn color_abnormal(c: &Vector3<Float>) -> bool {
-    c[0].is_nan() || c[1].is_nan() || c[2].is_nan() ||
-        c[0].is_infinite() || c[1].is_infinite() || c[2].is_infinite()
+
+}
+fn color_abnormal(c: Float) -> bool {
+    c.is_nan() || c.is_infinite()
 }
 fn mul_vectors(a: &Vector3<Float>, b: &Vector3<Float>) -> Vector3<Float> {
     Vector3::new(

@@ -7,7 +7,7 @@ use crate::scene::primitive::Primitive;
 pub enum Shape {
     Sphere {
         radius: Float,
-    }
+    },
 }
 impl Shape {
     pub fn as_transformed_primitives(&self, t: &Isometry3<Float>) -> Vec<Primitive> {

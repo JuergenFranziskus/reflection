@@ -5,6 +5,7 @@ use crate::{Float, Randomness, Scene};
 use crate::intersection::Intersection;
 use crate::pdf::PDF;
 use crate::ray::Ray;
+use crate::texture::TextureCoord2D;
 use crate::world::material::MaterialRef;
 
 pub enum Primitive {
@@ -12,7 +13,7 @@ pub enum Primitive {
         origin: Point3<Float>,
         rotation: UnitQuaternion<Float>,
         radius: Float,
-    }
+    },
 }
 impl Primitive {
     pub fn aabb(&self) -> AABB {
@@ -88,7 +89,7 @@ impl Primitive {
 
 fn intersect_sphere(
     origin: Point3<Float>,
-    _rotation: UnitQuaternion<Float>,
+    rotation: UnitQuaternion<Float>,
     radius: Float,
     ray: &Ray,
     t_min: Float,
@@ -121,10 +122,19 @@ fn intersect_sphere(
 
     if let Some((t, outside)) = t {
         let point = ray.point_at(t);
+
+        let outward_normal = Unit::new_normalize(point - origin);
+        let uv_normal = rotation.transform_vector(&outward_normal);
+
+        let theta = (-uv_normal[1]).acos();
+        let phi = (-uv_normal[2]).atan2(uv_normal[0]) + Float::PI();
+        let u = phi / (Float::PI() * 2.0);
+        let v = theta / Float::PI();
+
         let normal = if outside {
-            Unit::new_normalize(point - origin)
+            outward_normal
         } else {
-            Unit::new_normalize(origin - point)
+            -outward_normal
         };
 
 
@@ -133,6 +143,7 @@ fn intersect_sphere(
             normal,
             point,
             outside,
+            tex_coord: TextureCoord2D::new(u, v),
         })
     }
     else {
@@ -150,6 +161,7 @@ pub struct PrimitiveIntersection {
     pub point: Point3<Float>,
     pub normal: Unit<Vector3<Float>>,
     pub outside: bool,
+    pub tex_coord: TextureCoord2D,
 }
 impl PrimitiveIntersection {
     pub fn to_intersection(self, mat: MaterialRef) -> Intersection {
@@ -159,6 +171,7 @@ impl PrimitiveIntersection {
             normal: self.normal,
             outside: self.outside,
             material: mat,
+            tex_coord: self.tex_coord,
         }
     }
 }

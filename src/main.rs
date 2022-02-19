@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::time::Instant;
-use image::ImageFormat;
+use image::{ImageFormat};
 use nalgebra::{Isometry3, Point3, Unit, vector, Vector3};
 use reflection::camera::Camera;
 use reflection::{Float, render, RenderDescriptor};
@@ -10,13 +11,15 @@ use rand::prelude::*;
 use rand_distr::UnitSphere;
 use reflection::integrator::path_integrator::PathTracingIntegrator;
 use reflection::randomness::{Randomness, SeedingRandomness};
+use reflection::texture::{Texture2D};
+use reflection::world::albedo::AlbedoRef;
 use reflection::world::material::MaterialRef;
 use reflection::world::World;
 
 
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
-const SAMPLES: u32 = 16;
+const SAMPLES: u32 = 1024;
 const DEPTH: u32 = 4;
 const ASPECT: Float = WIDTH as Float / HEIGHT as Float;
 
@@ -39,7 +42,7 @@ fn main() {
     let scene = world.build_scene(&mut randomness);
     let build_took = build_start.elapsed();
 
-    let integrator = PathTracingIntegrator::new(DEPTH, vector!(0.0, 0.0, 0.0), &scene);
+    let integrator = PathTracingIntegrator::new(DEPTH, vector!(1.0, 1.0, 1.0), &scene);
 
     let start = Instant::now();
     let render = render(RenderDescriptor {
@@ -142,11 +145,10 @@ fn build_world<R: Randomness>(rng: &mut R) -> (World, Camera) {
 
     let sphere = world.add_sphere(1.0);
 
-    let mat_0_albedo = world.add_solid_albedo(vector!(1.0, 1.0, 1.0) * 10.0);
-    let mat0 = world.add_emitting_material(mat_0_albedo);
-    //let mat0 = random_lambertian(&mut world, rng);
+    let mat0_albedo = load_texture_albedo_jpeg("resources/earthmap.jpg", &mut world);
+    let mat0 = world.add_lambertian_material(mat0_albedo);
     let mat1 = random_lambertian(&mut world, rng);
-    let mat2 = random_lambertian(&mut world, rng);
+    let mat2 = world.add_mirror_material();
 
     world.add_object(sphere, mat0, Isometry3::translation( 0.0, 1.0, 0.0));
     world.add_object(sphere, mat1, Isometry3::translation(-4.0, 1.0, 0.0));
@@ -162,6 +164,23 @@ fn build_world<R: Randomness>(rng: &mut R) -> (World, Camera) {
     );
 
     (world, camera)
+}
+fn load_texture_albedo_jpeg(name: &str, world: &mut World) -> AlbedoRef {
+    let file = std::fs::File::open(name).unwrap();
+    let bufread = BufReader::new(file);
+    let image = image::load(bufread, ImageFormat::Jpeg).unwrap();
+
+    let mut pixels = Vec::new();
+
+    let image = image.to_rgb32f();
+
+    image.pixels().for_each(|p| {
+        let pixel = Vector3::new(p[0], p[1], p[2]).cast();
+        pixels.push(pixel);
+    });
+
+    let texture = Texture2D::new_from_pixels(image.width(), image.height(), pixels);
+    world.add_texture_albedo(texture)
 }
 fn random_lambertian<R: Randomness>(world: &mut World, rng: &mut R) -> MaterialRef {
     let albedo = random_albedo(rng);

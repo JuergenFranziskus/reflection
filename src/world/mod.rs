@@ -1,9 +1,10 @@
 use generational_arena::{Arena, Index};
 use nalgebra::{Isometry3, UnitVector3, Vector3};
-use crate::Float;
+use crate::{Float, Texture2D};
 use crate::intersection::Intersection;
 use crate::randomness::Randomness;
 use crate::scene::Scene;
+use crate::texture::TextureCoord2D;
 use crate::world::albedo::{Albedo, AlbedoRef};
 use crate::world::material::{Material, MaterialRef, ScatteredRay};
 use crate::world::shape::{Shape, ShapeRef};
@@ -36,12 +37,20 @@ impl World {
         let i = self.albedos.insert(Albedo::SolidColor(albedo));
         AlbedoRef(i)
     }
+    pub fn add_texture_albedo(&mut self, texture: Texture2D<Vector3<Float>>) -> AlbedoRef {
+        let i = self.albedos.insert(Albedo::Texture(texture));
+        AlbedoRef(i)
+    }
     pub fn add_lambertian_material(&mut self, albedo: AlbedoRef) -> MaterialRef {
         let i = self.materials.insert(Material::Lambertian(albedo));
         MaterialRef(i)
     }
-    pub fn add_emitting_material(&mut self, albedo: AlbedoRef) -> MaterialRef {
-        let i = self.materials.insert(Material::Emitting(albedo));
+    pub fn add_mirror_material(&mut self) -> MaterialRef {
+        let i = self.materials.insert(Material::Mirror);
+        MaterialRef(i)
+    }
+    pub fn add_emitting_material(&mut self, albedo: AlbedoRef, factor: Float) -> MaterialRef {
+        let i = self.materials.insert(Material::Emitting(albedo, factor));
         MaterialRef(i)
     }
     pub fn add_object(&mut self, shape: ShapeRef, mat: MaterialRef, transform: Isometry3<Float>) -> ObjectRef {
@@ -50,10 +59,9 @@ impl World {
     }
 
 
-    pub fn sample_albedo(&self, albedo: AlbedoRef, int: &Intersection) -> Vector3<Float> {
+    pub fn sample_albedo(&self, albedo: AlbedoRef, coord: &TextureCoord2D) -> Vector3<Float> {
         let a = &self.albedos[albedo.0];
-        a.sample(int)
-
+        a.sample(coord)
     }
     pub fn scatter_ray(&self, mat: MaterialRef, ray_in: UnitVector3<Float>, int: &Intersection, scene: &Scene) -> Option<ScatteredRay> {
         let m = &self.materials[mat.0];
