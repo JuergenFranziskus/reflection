@@ -7,7 +7,6 @@ use crate::world::albedo::AlbedoRef;
 use crate::world::World;
 use num_traits::identities::Zero;
 use crate::pdf::PDF;
-use crate::ray::Ray;
 
 
 pub enum Material {
@@ -22,9 +21,10 @@ impl Material {
                 let pdf = MaterialPDF::Lambertian(CosinePDF::new(int.normal));
                 let albedo = scene.world.sample_albedo(*albedo, &int.tex_coord);
 
-                Some(ScatteredRay::Diffuse {
+                Some(ScatteredRay {
                     pdf,
-                    albedo,
+                    attenuation: albedo,
+                    is_specular: false,
                 })
             }
             Self::Mirror => {
@@ -32,11 +32,12 @@ impl Material {
                 let mut dir = -ray_in.into_inner();
                 reflection.reflect(&mut dir);
 
-                let ray = Ray::new(int.point, Unit::new_normalize(dir));
+                let pdf = MaterialPDF::Specular(Unit::new_normalize(dir));
 
-                Some(ScatteredRay::Specular {
-                    ray,
-                    albedo: vector!(1.0, 1.0, 1.0),
+                Some(ScatteredRay {
+                    pdf,
+                    attenuation: vector!(1.0, 1.0, 1.0),
+                    is_specular: true,
                 })
             }
             Self::Emitting(_, _) => None,
@@ -52,10 +53,10 @@ impl Material {
                     0.0
                 }
                 else {
-                    1.0 / Float::PI()
+                    cosine / Float::PI()
                 }
             }
-            Self::Mirror => 1.0,
+            Self::Mirror => 1.0, // specular rays aren't biased, so in this case, it will only be the ray reflected by this very material
             Self::Emitting(_, _) => 0.0,
         }
     }
@@ -81,30 +82,28 @@ impl Material {
 pub struct MaterialRef(pub(crate) Index);
 
 
-pub enum ScatteredRay {
-    Diffuse {
-        pdf: MaterialPDF,
-        albedo: Vector3<Float>,
-    },
-    Specular {
-        ray: Ray,
-        albedo: Vector3<Float>,
-    },
+pub struct ScatteredRay {
+    pub pdf: MaterialPDF,
+    pub attenuation: Vector3<Float>,
+    pub is_specular: bool,
 }
 
 pub enum MaterialPDF {
     Lambertian(CosinePDF),
+    Specular(UnitVector3<Float>)
 }
 impl PDF<UnitVector3<Float>> for MaterialPDF {
     fn value(&self, direction: &UnitVector3<Float>, scene: &Scene) -> Float {
         match self {
             Self::Lambertian(c) => c.value(direction, scene),
+            Self::Specular(v) => if v == direction { 1.0 } else { 0.0 },
         }
     }
 
     fn generate(&self, rng: &mut dyn Randomness, scene: &Scene) -> UnitVector3<Float> {
         match self {
             Self::Lambertian(c) => c.generate(rng, scene),
+            Self::Specular(v) => *v,
         }
     }
 }

@@ -19,7 +19,7 @@ use reflection::world::World;
 
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
-const SAMPLES: u32 = 1024;
+const SAMPLES: u32 = 1920;
 const DEPTH: u32 = 4;
 const ASPECT: Float = WIDTH as Float / HEIGHT as Float;
 

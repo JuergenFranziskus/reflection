@@ -4,7 +4,7 @@ use crate::intersection::Intersection;
 use crate::pdf::PDF;
 use crate::ray::Ray;
 use crate::scene::primitive::{PrimitiveDirectionPDF, PrimitiveRef};
-use crate::world::material::{MaterialPDF, ScatteredRay};
+use crate::world::material::{ScatteredRay};
 
 pub struct PathTracingIntegrator {
     max_depth: u32,
@@ -44,25 +44,25 @@ impl PathTracingIntegrator {
 
         total_value / dividend
     }
-    fn generate_new_ray<R: Randomness>(&self, pdf: &MaterialPDF, int: &Intersection, scene: &Scene, rng: &mut R) -> (Ray, Float) {
-        if self.lights.len() != 0 {
+    fn generate_new_ray<R: Randomness>(&self, scattered: &ScatteredRay, int: &Intersection, scene: &Scene, rng: &mut R) -> (Ray, Float) {
+        if self.lights.len() != 0 && !scattered.is_specular {
             let choice = rng.usize_range_exclusive(0, 2);
 
             let ray = if choice == 0 {
                 self.bias_light(int, scene, rng)
             } else {
-                let dir = pdf.generate(rng, scene);
+                let dir = scattered.pdf.generate(rng, scene);
                 Ray::new(int.point, dir)
             };
 
             let light_pdf_value = self.light_pdf_value(ray.direction, int, scene);
-            let scattered_pdf_value = pdf.value(&ray.direction, scene);
+            let scattered_pdf_value = scattered.pdf.value(&ray.direction, scene);
 
             let total_pdf_value = 0.5 * scattered_pdf_value + 0.5 * light_pdf_value;
             (ray, total_pdf_value)
         } else {
-            let ray = Ray::new(int.point, pdf.generate(rng, scene));
-            let pdf = pdf.value(&ray.direction, scene);
+            let ray = Ray::new(int.point, scattered.pdf.generate(rng, scene));
+            let pdf = scattered.pdf.value(&ray.direction, scene);
             (ray, pdf)
         }
     }
@@ -78,31 +78,18 @@ impl Integrator for PathTracingIntegrator {
             let emitted = scene.world.emit(mat, -ray.direction, &int);
 
             if let Some(scattered) = scene.world.scatter_ray(mat, -ray.direction, &int, scene) {
-                match scattered {
-                    ScatteredRay::Diffuse { pdf, albedo } => {
-                        let (ray_out, pdf) = self.generate_new_ray(&pdf, &int, scene, rng);
+                let (ray_out, pdf) = self.generate_new_ray(&scattered, &int, scene, rng);
 
-                        let brdf = scene.world.brdf(mat, ray_out.direction, &int, -ray.direction);
-                        let cos_theta = int.normal.dot(&ray_out.direction).abs();
+                let brdf = scene.world.brdf(mat, ray_out.direction, &int, -ray.direction);
 
-                        let mut recursed = self.cast_ray(&ray_out, t_min, t_max, scene, depth + 1, rng);
-                        correct_abnormal_color(&mut recursed);
+                let mut recursed = self.cast_ray(&ray_out, t_min, t_max, scene, depth + 1, rng);
+                correct_abnormal_color(&mut recursed);
 
-                        emitted + (mul_vectors(&albedo, &recursed) * brdf * cos_theta) / pdf
-                    }
-                    ScatteredRay::Specular { ray, albedo } => {
-                        let mut recursed = self.cast_ray(&ray, t_min, t_max, scene, depth + 1, rng);
-                        correct_abnormal_color(&mut recursed);
-
-                        emitted + (mul_vectors(&albedo, &recursed))
-                    }
-                }
-            }
-            else {
+                emitted + (mul_vectors(&scattered.attenuation, &recursed) * brdf) / pdf
+            } else {
                 emitted
             }
-        }
-        else {
+        } else {
             self.background_color
         }
     }
