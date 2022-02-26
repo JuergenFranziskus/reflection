@@ -44,7 +44,7 @@ impl Material {
         }
     }
 
-    pub fn brdf(&self, ray_in: UnitVector3<Float>, int: &Intersection, _ray_out: UnitVector3<Float>) -> Float {
+    pub fn brdf(&self, ray_in: UnitVector3<Float>, int: &Intersection, ray_out: UnitVector3<Float>) -> Float {
         match self {
             Self::Lambertian(_) => {
                 let cosine = int.normal.dot(&ray_in);
@@ -56,7 +56,23 @@ impl Material {
                     cosine / Float::PI()
                 }
             }
-            Self::Mirror => 1.0, // specular rays aren't biased, so in this case, it will only be the ray reflected by this very material
+            Self::Mirror => {
+                let reflection = Reflection3::new(int.normal, 0.0);
+                let mut dir = -ray_in.into_inner();
+                reflection.reflect(&mut dir);
+
+                let unit_dir = Unit::new_normalize(dir);
+
+                let cos = unit_dir.dot(&ray_out);
+
+                // Comparison can have a 1/1000 margin of error cuz of floating point inaccuracies
+                if cos > 0.999 {
+                    1.0
+                }
+                else {
+                    0.0
+                }
+            }
             Self::Emitting(_, _) => 0.0,
         }
     }
